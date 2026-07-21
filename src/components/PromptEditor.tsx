@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Prompt, PromptVersion, TestCase } from "../types";
+import { Registry } from "../modelsRegistry";
 import { 
   Save, 
   Play, 
@@ -275,9 +276,20 @@ export default function PromptEditor({
                 onChange={e => setModel(e.target.value)}
                 className="w-full text-sm px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white transition-all font-sans [&>option]:bg-slate-950 [&>option]:text-white cursor-pointer"
               >
-                <option value="gemini-3.5-flash">gemini-3.5-flash</option>
-                <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (Paid Key)</option>
-                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                <optgroup label="☁️ Cloud Models">
+                  {Registry.ALL_MODELS.filter(m => !m.isLocal).map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} [{m.badge}]
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="💻 Local AI Models">
+                  {Registry.ALL_MODELS.filter(m => m.isLocal).map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} [{m.badge}]
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 

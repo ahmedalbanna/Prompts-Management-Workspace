@@ -115,6 +115,20 @@ function createSchema(db: SqlJsDatabase): void {
       created_at TEXT NOT NULL
     );
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS provider_configs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      is_enabled INTEGER NOT NULL,
+      endpoint_url TEXT,
+      api_key TEXT,
+      status TEXT NOT NULL,
+      available_models TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 function seedInitialData(db: SqlJsDatabase): void {
@@ -405,3 +419,76 @@ export function getSQLiteStats(db: SqlJsDatabase): {
     tables,
   };
 }
+
+// Get Provider Configurations from SQLite
+export function getProviderConfigsFromSQLite(db: SqlJsDatabase): any[] {
+  try {
+    const res = db.exec("SELECT * FROM provider_configs;");
+    if (!res[0] || !res[0].values) return [];
+
+    const cols = res[0].columns;
+    return res[0].values.map(row => {
+      const obj: any = {};
+      cols.forEach((col, idx) => {
+        obj[col] = row[idx];
+      });
+
+      let availableModels: string[] = [];
+      try {
+        availableModels = JSON.parse(obj.available_models || "[]");
+      } catch {
+        availableModels = [];
+      }
+
+      return {
+        id: obj.id,
+        name: obj.name,
+        category: obj.category,
+        isEnabled: Boolean(obj.is_enabled),
+        endpointUrl: obj.endpoint_url,
+        apiKey: obj.api_key,
+        status: obj.status,
+        availableModels,
+        updatedAt: obj.updated_at,
+      };
+    });
+  } catch (err) {
+    console.warn("Failed to fetch provider configs from SQLite:", err);
+    return [];
+  }
+}
+
+// Save or Update Provider Configuration in SQLite
+export function saveProviderConfigToSQLite(db: SqlJsDatabase, config: any): void {
+  try {
+    db.run(
+      `INSERT INTO provider_configs (
+        id, name, category, is_enabled, endpoint_url, api_key, status, available_models, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        category = excluded.category,
+        is_enabled = excluded.is_enabled,
+        endpoint_url = excluded.endpoint_url,
+        api_key = excluded.api_key,
+        status = excluded.status,
+        available_models = excluded.available_models,
+        updated_at = excluded.updated_at;`,
+      [
+        config.id,
+        config.name,
+        config.category,
+        config.isEnabled ? 1 : 0,
+        config.endpointUrl || null,
+        config.apiKey || null,
+        config.status || "online",
+        JSON.stringify(config.availableModels || []),
+        new Date().toISOString(),
+      ]
+    );
+    persistDatabase();
+  } catch (err) {
+    console.error("Failed to save provider config to SQLite:", err);
+  }
+}
+

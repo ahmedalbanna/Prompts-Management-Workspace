@@ -10,6 +10,7 @@ import AiOptimizer from "./components/AiOptimizer";
 import EvaluationsLab from "./components/EvaluationsLab";
 import AnalyticsPanel from "./components/AnalyticsPanel";
 import SqliteInspector from "./components/SqliteInspector";
+import ModelProvidersManager from "./components/ModelProvidersManager";
 
 import { 
   Layers, 
@@ -23,7 +24,8 @@ import {
   Database,
   RefreshCw,
   Plus,
-  CheckCircle2
+  CheckCircle2,
+  Cpu
 } from "lucide-react";
 
 export default function App() {
@@ -393,6 +395,18 @@ export default function App() {
           </button>
 
           <button
+            id="tab-nav-providers"
+            onClick={() => setActiveTab("providers")}
+            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "providers"
+                ? "bg-indigo-500/25 text-white shadow-xs font-bold border border-indigo-500/40"
+                : "hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <Cpu className="h-3.5 w-3.5 text-indigo-400" /> AI Providers
+          </button>
+
+          <button
             id="tab-nav-sqlite"
             onClick={() => setActiveTab("sqlite")}
             className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -465,6 +479,10 @@ export default function App() {
             prompts={prompts}
             selectedPrompt={selectedPrompt}
           />
+        )}
+
+        {activeTab === "providers" && (
+          <ModelProvidersManager />
         )}
 
         {activeTab === "sqlite" && (
