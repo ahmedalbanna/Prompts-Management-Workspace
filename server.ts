@@ -2,6 +2,15 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { 
+  getSQLiteDb, 
+  getAllPromptsFromSQLite, 
+  savePromptToSQLite, 
+  resetSQLiteDatabase, 
+  deletePromptFromSQLite, 
+  logExecutionToSQLite, 
+  getSQLiteStats 
+} from "./src/db/sqlite";
 
 const app = express();
 const PORT = 3000;
@@ -24,9 +33,109 @@ function getAiClient() {
   });
 }
 
+// ==========================================
+// SQLITE DATABASE REST ENDPOINTS
+// ==========================================
+
+// 1. Get all prompts stored in SQLite
+app.get("/api/db/prompts", async (req, res) => {
+  try {
+    const db = await getSQLiteDb();
+    const prompts = getAllPromptsFromSQLite(db);
+    res.json({ success: true, prompts });
+  } catch (error: any) {
+    console.error("SQLite fetch error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to fetch prompts from SQLite." });
+  }
+});
+
+// 2. Save or update a prompt in SQLite
+app.post("/api/db/prompts", async (req, res) => {
+  try {
+    const prompt = req.body;
+    if (!prompt || !prompt.id) {
+      return res.status(400).json({ success: false, error: "Valid prompt payload with id is required." });
+    }
+    const db = await getSQLiteDb();
+    savePromptToSQLite(db, prompt);
+    res.json({ success: true, message: "Prompt saved to SQLite database successfully." });
+  } catch (error: any) {
+    console.error("SQLite save error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to save prompt to SQLite." });
+  }
+});
+
+// 3. Reset SQLite database to default initial prompts
+app.post("/api/db/reset", async (req, res) => {
+  try {
+    const db = await getSQLiteDb();
+    const prompts = resetSQLiteDatabase(db);
+    res.json({ success: true, prompts, message: "SQLite database restored to seed defaults." });
+  } catch (error: any) {
+    console.error("SQLite reset error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to reset SQLite database." });
+  }
+});
+
+// 4. Delete a prompt from SQLite
+app.delete("/api/db/prompts/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getSQLiteDb();
+    deletePromptFromSQLite(db, id);
+    res.json({ success: true, message: `Prompt ${id} deleted from SQLite.` });
+  } catch (error: any) {
+    console.error("SQLite delete error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to delete prompt from SQLite." });
+  }
+});
+
+// 5. Get SQLite database metadata and statistics
+app.get("/api/db/stats", async (req, res) => {
+  try {
+    const db = await getSQLiteDb();
+    const stats = getSQLiteStats(db);
+    res.json({ success: true, stats });
+  } catch (error: any) {
+    console.error("SQLite stats error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to get SQLite database stats." });
+  }
+});
+
+// 6. Execute custom SQL read query in SQLite (SQL Query Explorer)
+app.post("/api/db/query", async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ success: false, error: "SQL query string is required." });
+    }
+    
+    // Safety check: only allow SELECT or PRAGMA statements
+    const trimmed = query.trim().toUpperCase();
+    if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("PRAGMA") && !trimmed.startsWith("EXPLAIN")) {
+      return res.status(400).json({ success: false, error: "Only SELECT or PRAGMA queries are allowed in the Query Explorer." });
+    }
+
+    const db = await getSQLiteDb();
+    const execRes = db.exec(query);
+    if (!execRes[0]) {
+      return res.json({ success: true, columns: [], rows: [] });
+    }
+
+    res.json({
+      success: true,
+      columns: execRes[0].columns,
+      rows: execRes[0].values,
+    });
+  } catch (error: any) {
+    console.error("SQLite query error:", error);
+    res.status(400).json({ success: false, error: error.message || "SQL query execution failed." });
+  }
+});
+
 // API: Run test prompt with dynamic variables
 app.post("/api/prompts/test", async (req, res) => {
-  const { systemInstruction, template, variables, model, temperature, maxOutputTokens } = req.body;
+  const { promptId, systemInstruction, template, variables, model, temperature, maxOutputTokens } = req.body;
 
   try {
     const ai = getAiClient();
@@ -65,15 +174,38 @@ app.post("/api/prompts/test", async (req, res) => {
     });
 
     const durationMs = Date.now() - startTime;
+    const promptTokens = response.usageMetadata?.promptTokenCount || 0;
+    const candidatesTokens = response.usageMetadata?.candidatesTokenCount || 0;
+    const totalTokens = response.usageMetadata?.totalTokenCount || 0;
+    const outputText = response.text || "";
+
+    // Log to SQLite
+    try {
+      const db = await getSQLiteDb();
+      logExecutionToSQLite(
+        db,
+        promptId || "test-runner",
+        null,
+        modelToUse,
+        promptContent,
+        outputText,
+        durationMs,
+        promptTokens,
+        candidatesTokens,
+        totalTokens
+      );
+    } catch (logErr) {
+      console.warn("Failed to log execution to SQLite:", logErr);
+    }
 
     res.json({
       success: true,
-      output: response.text || "",
+      output: outputText,
       durationMs,
       tokens: {
-        prompt: response.usageMetadata?.promptTokenCount || 0,
-        candidates: response.usageMetadata?.candidatesTokenCount || 0,
-        total: response.usageMetadata?.totalTokenCount || 0,
+        prompt: promptTokens,
+        candidates: candidatesTokens,
+        total: totalTokens,
       }
     });
   } catch (error: any) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Prompt, PromptVersion, TestCase } from "./types";
 import { INITIAL_PROMPTS } from "./initialPrompts";
 
@@ -9,6 +9,7 @@ import VersionHistory from "./components/VersionHistory";
 import AiOptimizer from "./components/AiOptimizer";
 import EvaluationsLab from "./components/EvaluationsLab";
 import AnalyticsPanel from "./components/AnalyticsPanel";
+import SqliteInspector from "./components/SqliteInspector";
 
 import { 
   Layers, 
@@ -21,11 +22,12 @@ import {
   ChevronRight,
   Database,
   RefreshCw,
-  Plus
+  Plus,
+  CheckCircle2
 } from "lucide-react";
 
 export default function App() {
-  // Load prompts from localStorage or default to initial
+  // Load prompts state
   const [prompts, setPrompts] = useState<Prompt[]>(() => {
     const saved = localStorage.getItem("prompt_craft_prompts");
     if (saved) {
@@ -38,6 +40,26 @@ export default function App() {
     return INITIAL_PROMPTS;
   });
 
+  const [isSqliteConnected, setIsSqliteConnected] = useState(false);
+
+  // Fetch prompts directly from SQLite backend database
+  const fetchPromptsFromSQLite = useCallback(async () => {
+    try {
+      const res = await fetch("/api/db/prompts");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.prompts) && data.prompts.length > 0) {
+        setPrompts(data.prompts);
+        setIsSqliteConnected(true);
+      }
+    } catch (err) {
+      console.warn("SQLite endpoint unavailable, using local client cache", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPromptsFromSQLite();
+  }, [fetchPromptsFromSQLite]);
+
   // Selected prompt tracking
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(() => {
     return prompts.length > 0 ? prompts[0].id : null;
@@ -47,12 +69,26 @@ export default function App() {
     return prompts.find(p => p.id === selectedPromptId) || null;
   }, [prompts, selectedPromptId]);
 
-  // Save prompts to localStorage whenever they change
+  // Save prompts to localStorage cache whenever they change
   useEffect(() => {
     localStorage.setItem("prompt_craft_prompts", JSON.stringify(prompts));
   }, [prompts]);
 
-  // Navigation state: "catalog" | "editor" | "evaluations" | "optimize" | "analytics"
+  // Helper to persist prompt to SQLite backend database
+  const syncPromptToSQLite = async (promptToSync: Prompt) => {
+    try {
+      await fetch("/api/db/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(promptToSync),
+      });
+      setIsSqliteConnected(true);
+    } catch (err) {
+      console.warn("Failed to sync prompt to SQLite database", err);
+    }
+  };
+
+  // Navigation state: "catalog" | "editor" | "evaluations" | "optimize" | "analytics" | "sqlite"
   const [activeTab, setActiveTab] = useState<string>("catalog");
 
   // Versions sidebar state (sliding drawer inside workspace editor)
@@ -81,9 +117,11 @@ export default function App() {
       ...updatedPrompt,
       versions: [...updatedPrompt.versions, newVersion],
       currentVersionIndex: updatedPrompt.versions.length,
+      updatedAt: new Date().toISOString(),
     };
 
     setPrompts(prev => prev.map(p => p.id === savedPrompt.id ? savedPrompt : p));
+    syncPromptToSQLite(savedPrompt);
   };
 
   // 2. Revert prompt to a specific version in timeline
@@ -116,6 +154,7 @@ export default function App() {
     };
 
     setPrompts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    syncPromptToSQLite(updated);
   };
 
   // 4. Create a completely brand new blank prompt template
@@ -154,6 +193,7 @@ export default function App() {
     setPrompts(prev => [newPrompt, ...prev]);
     setSelectedPromptId(newId);
     setActiveTab("editor");
+    syncPromptToSQLite(newPrompt);
   };
 
   // 5. Load an AI optimized template straight into workstation
@@ -199,6 +239,7 @@ export default function App() {
     setPrompts(prev => [newPrompt, ...prev]);
     setSelectedPromptId(newId);
     setActiveTab("editor");
+    syncPromptToSQLite(newPrompt);
   };
 
   // 6. Execute the test prompt request server-side
@@ -213,7 +254,10 @@ export default function App() {
     const response = await fetch("/api/prompts/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        promptId: selectedPromptId,
+      })
     });
 
     const data = await response.json();
@@ -228,8 +272,24 @@ export default function App() {
     };
   };
 
-  const handleResetCatalog = () => {
-    if (window.confirm("Are you sure you want to restore all pre-loaded prompts? This will overwrite active custom edits.")) {
+  const handleResetCatalog = async () => {
+    if (window.confirm("Are you sure you want to restore all pre-loaded prompts in SQLite? This will overwrite active custom edits.")) {
+      try {
+        const res = await fetch("/api/db/reset", { method: "POST" });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.prompts)) {
+          setPrompts(data.prompts);
+          if (data.prompts.length > 0) {
+            setSelectedPromptId(data.prompts[0].id);
+          }
+          setActiveTab("catalog");
+          alert("SQLite database restored to seed defaults!");
+          return;
+        }
+      } catch (err) {
+        console.warn("Failed to reset SQLite DB via API, using local fallback", err);
+      }
+
       setPrompts(INITIAL_PROMPTS);
       if (INITIAL_PROMPTS.length > 0) {
         setSelectedPromptId(INITIAL_PROMPTS[0].id);
@@ -259,13 +319,13 @@ export default function App() {
               PromptCraft Studio
             </h1>
             <p className="text-[11px] text-slate-400 font-medium font-sans">
-              Enterprise Prompts Management, VCS Snapshotting & Side-by-Side Evaluations
+              Enterprise Prompts Management & SQLite Engine
             </p>
           </div>
         </div>
 
         {/* Modules navigation selectors */}
-        <nav className="flex items-center gap-1 bg-white/5 border border-white/5 p-1.5 rounded-xl text-xs font-semibold text-slate-400 z-10" id="modules-navigation">
+        <nav className="flex items-center gap-1 bg-white/5 border border-white/5 p-1.5 rounded-xl text-xs font-semibold text-slate-400 z-10 flex-wrap" id="modules-navigation">
           <button
             id="tab-nav-catalog"
             onClick={() => setActiveTab("catalog")}
@@ -331,6 +391,18 @@ export default function App() {
           >
             <BarChart className="h-3.5 w-3.5" /> Insights
           </button>
+
+          <button
+            id="tab-nav-sqlite"
+            onClick={() => setActiveTab("sqlite")}
+            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "sqlite"
+                ? "bg-indigo-500/25 text-white shadow-xs font-bold border border-indigo-500/40"
+                : "hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <Database className="h-3.5 w-3.5 text-indigo-400" /> SQLite Manager
+          </button>
         </nav>
       </header>
 
@@ -395,6 +467,12 @@ export default function App() {
           />
         )}
 
+        {activeTab === "sqlite" && (
+          <SqliteInspector
+            onRefreshPrompts={fetchPromptsFromSQLite}
+          />
+        )}
+
       </main>
 
       {/* bottom docked persona controller and quota feed */}
@@ -425,14 +503,19 @@ export default function App() {
 
         {/* Database quota and workspace synchronization status */}
         <div className="flex items-center gap-4 font-mono text-[11px]" id="db-quota-status-section">
-          <div className="flex items-center gap-1 text-emerald-400 font-bold">
+          <button
+            id="sqlite-footer-status-btn"
+            onClick={() => setActiveTab("sqlite")}
+            className="flex items-center gap-1.5 text-emerald-400 font-bold hover:underline cursor-pointer"
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>VCS-REPOSITORIES @ ONLINE</span>
-          </div>
+            <Database className="h-3.5 w-3.5 text-emerald-400" />
+            <span>SQLITE DB @ ONLINE (promptcraft.sqlite)</span>
+          </button>
           
           <div className="flex items-center gap-1">
-            <Database className="h-3.5 w-3.5 text-slate-400" />
-            <span>LOCAL: 100% OK</span>
+            <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400" />
+            <span>{prompts.length} PROMPTS STORED</span>
           </div>
 
           <button
@@ -449,3 +532,4 @@ export default function App() {
     </div>
   );
 }
+
