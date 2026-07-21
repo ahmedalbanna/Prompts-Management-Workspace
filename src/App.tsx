@@ -2,7 +2,12 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Prompt, PromptVersion, TestCase } from "./types";
 import { INITIAL_PROMPTS } from "./initialPrompts";
 
-// Component imports
+// Layout Shell Architecture
+import { LayoutShell } from "./components/LayoutShell";
+import QuickPromptNavigator from "./components/QuickPromptNavigator";
+import CommandPaletteModal from "./components/CommandPaletteModal";
+
+// Workspace Views
 import PromptCatalog from "./components/PromptCatalog";
 import PromptEditor from "./components/PromptEditor";
 import VersionHistory from "./components/VersionHistory";
@@ -20,13 +25,18 @@ import {
   BarChart, 
   GitBranch, 
   User, 
-  ChevronRight,
   Database,
   RefreshCw,
-  Plus,
   CheckCircle2,
-  Cpu
+  Cpu,
+  Search,
+  PanelLeft,
+  PanelRight,
+  Info,
+  Clock,
+  Tag
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
   // Load prompts state
@@ -90,14 +100,43 @@ export default function App() {
     }
   };
 
-  // Navigation state: "catalog" | "editor" | "evaluations" | "optimize" | "analytics" | "sqlite"
+  // Navigation state: "catalog" | "editor" | "evaluations" | "optimize" | "analytics" | "sqlite" | "providers"
   const [activeTab, setActiveTab] = useState<string>("catalog");
 
-  // Versions sidebar state (sliding drawer inside workspace editor)
-  const [showVersionsSidebar, setShowVersionsSidebar] = useState(false);
+  // Layout Shell slot visibility states
+  const [isLeftSlotOpen, setIsLeftSlotOpen] = useState(false);
+  const [isRightSlotOpen, setIsRightSlotOpen] = useState(false);
+  const [activeOverlay, setActiveOverlay] = useState<React.ReactNode | null>(null);
 
   // Active User Persona (Ahmed Albanna, Sarah Jenkins, Alex Martinez)
   const [activePersona, setActivePersona] = useState("Ahmed Albanna");
+
+  // Keyboard shortcut listener for Command Palette (Ctrl+K or Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        openCommandPalette();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [prompts, selectedPromptId]);
+
+  const openCommandPalette = () => {
+    setActiveOverlay(
+      <CommandPaletteModal
+        prompts={prompts}
+        onSelectPrompt={(id) => {
+          setSelectedPromptId(id);
+          setActiveTab("editor");
+        }}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        onCreateNew={handleCreateNewPrompt}
+        onClose={() => setActiveOverlay(null)}
+      />
+    );
+  };
 
   // Handlers for prompts actions
 
@@ -300,254 +339,373 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col justify-between relative overflow-x-hidden font-sans" id="app-workspace-root">
-      
-      {/* Ambient background glows */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/15 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-rose-600/10 blur-[120px] rounded-full"></div>
-        <div className="absolute top-[30%] right-[10%] w-[30%] h-[40%] bg-cyan-600/10 blur-[100px] rounded-full"></div>
-      </div>
-      
-      {/* Top Professional Control Header */}
-      <header className="glass-container sticky top-0 z-40 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 border-t-0 border-r-0 border-l-0 shadow-lg shadow-black/10">
-        <div className="flex items-center gap-2.5 z-10">
-          <div className="bg-indigo-500 rounded-xl p-2 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <GitBranch className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-              PromptCraft Studio
-            </h1>
-            <p className="text-[11px] text-slate-400 font-medium font-sans">
-              Enterprise Prompts Management & SQLite Engine
-            </p>
+  /* SLOT CONTENT RENDERERS */
+
+  // 1. TOP SLOT (Header, Brand, Nav Tabs, Slot Toggles)
+  const renderTopSlot = () => (
+    <div className="px-6 py-3.5 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3">
+          {/* Toggle Left Slot Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setIsLeftSlotOpen(prev => !prev)}
+            className={`p-2 rounded-xl transition-all cursor-pointer border ${
+              isLeftSlotOpen 
+                ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20" 
+                : "bg-white/5 border-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+            }`}
+            title="Toggle Sidebar"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </motion.button>
+
+          <div className="flex items-center gap-3 group">
+            <div className="bg-indigo-600 rounded-xl p-2.5 flex items-center justify-center shadow-lg shadow-indigo-600/30 group-hover:scale-105 transition-transform">
+              <GitBranch className="h-4 w-4 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <h1 className="text-sm font-black text-white tracking-widest uppercase">
+                PromptCraft <span className="text-indigo-400">Studio</span>
+              </h1>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">v4.0.0 Stable</span>
+                <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                <span className="text-[10px] text-emerald-500/80 font-mono font-bold">WASM_STORAGE_ACTIVE</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Modules navigation selectors */}
-        <nav className="flex items-center gap-1 bg-white/5 border border-white/5 p-1.5 rounded-xl text-xs font-semibold text-slate-400 z-10 flex-wrap" id="modules-navigation">
-          <button
-            id="tab-nav-catalog"
-            onClick={() => setActiveTab("catalog")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "catalog"
-                ? "bg-white/10 text-white shadow-xs font-bold border border-white/10"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Layers className="h-3.5 w-3.5" /> Prompt Library
-          </button>
-
-          <button
-            id="tab-nav-editor"
-            disabled={!selectedPromptId}
-            onClick={() => setActiveTab("editor")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              !selectedPromptId ? "opacity-40 cursor-not-allowed" : ""
-            } ${
-              activeTab === "editor"
-                ? "bg-white/10 text-white shadow-xs font-bold border border-white/10"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Sliders className="h-3.5 w-3.5" /> Workstation Editor
-          </button>
-
-          <button
-            id="tab-nav-evaluations"
-            disabled={!selectedPromptId}
-            onClick={() => setActiveTab("evaluations")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              !selectedPromptId ? "opacity-40 cursor-not-allowed" : ""
-            } ${
-              activeTab === "evaluations"
-                ? "bg-white/10 text-white shadow-xs font-bold border border-white/10"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Columns className="h-3.5 w-3.5" /> Evaluations Lab
-          </button>
-
-          <button
-            id="tab-nav-optimize"
-            onClick={() => setActiveTab("optimize")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "optimize"
-                ? "bg-white/10 text-white shadow-xs font-bold border border-white/10"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" /> Prompt Refiner
-          </button>
-
-          <button
-            id="tab-nav-analytics"
-            onClick={() => setActiveTab("analytics")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "analytics"
-                ? "bg-white/10 text-white shadow-xs font-bold border border-white/10"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <BarChart className="h-3.5 w-3.5" /> Insights
-          </button>
-
-          <button
-            id="tab-nav-providers"
-            onClick={() => setActiveTab("providers")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "providers"
-                ? "bg-indigo-500/25 text-white shadow-xs font-bold border border-indigo-500/40"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Cpu className="h-3.5 w-3.5 text-indigo-400" /> AI Providers
-          </button>
-
-          <button
-            id="tab-nav-sqlite"
-            onClick={() => setActiveTab("sqlite")}
-            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "sqlite"
-                ? "bg-indigo-500/25 text-white shadow-xs font-bold border border-indigo-500/40"
-                : "hover:bg-white/5 hover:text-white"
-            }`}
-          >
-            <Database className="h-3.5 w-3.5 text-indigo-400" /> SQLite Manager
-          </button>
+        <nav className="hidden lg:flex items-center gap-1 bg-slate-950/40 border border-white/5 p-1 rounded-xl" id="modules-navigation">
+          {[
+            { id: "catalog", label: "Library", icon: Layers },
+            { id: "editor", label: "Workstation", icon: Sliders, disabled: !selectedPromptId },
+            { id: "evaluations", label: "Evaluations", icon: Columns, disabled: !selectedPromptId },
+            { id: "optimize", label: "Refiner", icon: Sparkles },
+            { id: "analytics", label: "Analytics", icon: BarChart },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => !tab.disabled && setActiveTab(tab.id)}
+              disabled={tab.disabled}
+              className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-2 text-[11px] font-bold cursor-pointer ${
+                tab.disabled ? "opacity-30 cursor-not-allowed" : ""
+              } ${
+                activeTab === tab.id
+                  ? "bg-white/10 text-white shadow-sm border border-white/10"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+              }`}
+            >
+              <tab.icon className={`h-3.5 w-3.5 ${activeTab === tab.id ? "text-indigo-400" : ""}`} />
+              {tab.label}
+            </button>
+          ))}
         </nav>
-      </header>
+      </div>
 
-      {/* Primary Workstation Body Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 z-10" id="primary-workstation-body">
-        
-        {/* Active Tab rendering */}
-        {activeTab === "catalog" && (
-          <PromptCatalog
-            prompts={prompts}
-            selectedPromptId={selectedPromptId}
-            onSelectPrompt={(id) => {
-              setSelectedPromptId(id);
-              setActiveTab("editor");
-            }}
-            onCreateNew={handleCreateNewPrompt}
-            onOptimizeTabTrigger={() => setActiveTab("optimize")}
-          />
-        )}
+      {/* Quick Search Command Palette Trigger & Right Slot Toggle */}
+      <div className="flex items-center gap-3">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={openCommandPalette}
+          className="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-950/40 border border-white/5 text-slate-500 hover:text-slate-200 hover:border-white/10 transition-all cursor-pointer group"
+        >
+          <Search className="h-3.5 w-3.5 text-indigo-500/70 group-hover:text-indigo-400" />
+          <span className="text-[11px] font-bold uppercase tracking-wider">Search Workspace</span>
+          <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded-md text-slate-600 group-hover:text-slate-400">⌘K</span>
+        </motion.button>
 
-        {activeTab === "editor" && selectedPrompt && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
-            {/* Split Editor Pane (7/12 or 12/12 based on history panel) */}
-            <div className={`${showVersionsSidebar ? "lg:col-span-8" : "lg:col-span-12"} transition-all duration-300`}>
-              <PromptEditor
-                prompt={selectedPrompt}
-                onSave={handleSavePrompt}
-                onRunTest={handleRunTest}
-                onOpenOptimizeDialog={() => setActiveTab("optimize")}
-                onOpenVersionsSidebar={() => setShowVersionsSidebar(!showVersionsSidebar)}
-              />
+        <div className="h-4 w-[1px] bg-white/5 mx-1" />
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setActiveTab("providers")}
+            className={`p-2 rounded-xl transition-all cursor-pointer border ${
+              activeTab === "providers"
+                ? "bg-indigo-600/20 border-indigo-500/40 text-white"
+                : "bg-white/5 border-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+            }`}
+            title="Model Providers"
+          >
+            <Cpu className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setActiveTab("sqlite")}
+            className={`p-2 rounded-xl transition-all cursor-pointer border ${
+              activeTab === "sqlite"
+                ? "bg-indigo-600/20 border-indigo-500/40 text-white"
+                : "bg-white/5 border-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+            }`}
+            title="Database Manager"
+          >
+            <Database className="h-4 w-4" />
+          </button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setIsRightSlotOpen(prev => !prev)}
+            className={`p-2 rounded-xl transition-all cursor-pointer border ${
+              isRightSlotOpen 
+                ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20" 
+                : "bg-white/5 border-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+            }`}
+            title="Toggle Inspector"
+          >
+            <PanelRight className="h-4 w-4" />
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 2. LEFT SLOT (Quick Prompt Navigator)
+  const renderLeftSlot = () => (
+    <QuickPromptNavigator
+      prompts={prompts}
+      selectedPromptId={selectedPromptId}
+      onSelectPrompt={(id) => {
+        setSelectedPromptId(id);
+        setActiveTab("editor");
+      }}
+      onCreateNew={handleCreateNewPrompt}
+      onOptimizeTrigger={() => setActiveTab("optimize")}
+    />
+  );
+
+  // 3. CONTENT SLOT (Active Main Workspace View)
+  const renderContentSlot = () => (
+    <div className="w-full h-full">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+          className="h-full"
+        >
+          {activeTab === "catalog" && (
+            <PromptCatalog
+              prompts={prompts}
+              selectedPromptId={selectedPromptId}
+              onSelectPrompt={(id) => {
+                setSelectedPromptId(id);
+                setActiveTab("editor");
+              }}
+              onCreateNew={handleCreateNewPrompt}
+              onOptimizeTabTrigger={() => setActiveTab("optimize")}
+            />
+          )}
+
+          {activeTab === "editor" && selectedPrompt && (
+            <PromptEditor
+              prompt={selectedPrompt}
+              onSave={handleSavePrompt}
+              onRunTest={handleRunTest}
+              onOpenOptimizeDialog={() => setActiveTab("optimize")}
+              onOpenVersionsSidebar={() => setIsRightSlotOpen(true)}
+            />
+          )}
+
+          {activeTab === "evaluations" && selectedPrompt && (
+            <EvaluationsLab
+              prompt={selectedPrompt}
+              onUpdateTestCases={handleUpdateTestCases}
+            />
+          )}
+
+          {activeTab === "optimize" && (
+            <AiOptimizer onLoadOptimized={handleLoadOptimized} />
+          )}
+
+          {activeTab === "analytics" && (
+            <AnalyticsPanel
+              prompts={prompts}
+              selectedPrompt={selectedPrompt}
+            />
+          )}
+
+          {activeTab === "providers" && (
+            <ModelProvidersManager />
+          )}
+
+          {activeTab === "sqlite" && (
+            <SqliteInspector
+              onRefreshPrompts={fetchPromptsFromSQLite}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+
+  // 4. RIGHT SLOT (Version History & Inspector Panel)
+  const renderRightSlot = () => {
+    if (activeTab === "editor" && selectedPrompt) {
+      return (
+        <VersionHistory
+          prompt={selectedPrompt}
+          onRevert={handleRevertPrompt}
+          onClose={() => setIsRightSlotOpen(false)}
+        />
+      );
+    }
+
+    // Default Contextual Inspector when not in editor
+    return (
+      <div className="flex flex-col gap-6 text-xs">
+        {selectedPrompt ? (
+          <div className="flex flex-col gap-5">
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col gap-3 shadow-sm">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Resource Context</span>
+                <span className="font-bold text-white text-base leading-tight">{selectedPrompt.title}</span>
+              </div>
+              <p className="text-slate-400 text-xs leading-relaxed">{selectedPrompt.description}</p>
+              
+              <div className="flex items-center gap-3 mt-1 pt-3 border-t border-white/5">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] font-bold text-slate-600 uppercase">Category</span>
+                  <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-300 font-bold border border-indigo-500/20 w-fit">
+                    {selectedPrompt.category}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] font-bold text-slate-600 uppercase">Revisions</span>
+                  <span className="text-slate-300 flex items-center gap-1.5 font-mono font-bold">
+                    <Clock className="h-3 w-3 text-indigo-400" /> {selectedPrompt.versions.length}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Slide-out Versions Sidebar (VCS History) */}
-            {showVersionsSidebar && (
-              <div className="lg:col-span-4 rounded-xl overflow-hidden self-start">
-                <VersionHistory
-                  prompt={selectedPrompt}
-                  onRevert={handleRevertPrompt}
-                  onClose={() => setShowVersionsSidebar(false)}
-                />
+            <div className="flex flex-col gap-2 px-1">
+              <span className="font-black text-slate-500 uppercase tracking-[0.2em] text-[9px] flex items-center gap-2">
+                <Tag className="h-3 w-3 text-indigo-500" /> Taxonomy distribution
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedPrompt.tags.map(t => (
+                  <span key={t} className="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/5 text-slate-400 text-[10px] font-bold hover:text-white transition-colors cursor-default">
+                    #{t}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950/50 border border-white/5 flex flex-col gap-3">
+              <span className="font-black text-slate-500 uppercase tracking-[0.2em] text-[9px] flex items-center gap-2">
+                <Cpu className="h-3 w-3 text-indigo-500" /> Runtime config
+              </span>
+              <div className="bg-slate-900 border border-white/5 p-3 rounded-xl flex flex-col gap-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500 font-bold">Primary Engine</span>
+                  <span className="text-[10px] text-indigo-400 font-mono font-bold uppercase">{selectedPrompt.model}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500 font-bold">Temperature</span>
+                  <span className="text-[10px] text-slate-300 font-mono font-bold">{selectedPrompt.temperature}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-slate-500 font-bold">Token Budget</span>
+                  <span className="text-[10px] text-slate-300 font-mono font-bold">{selectedPrompt.maxOutputTokens}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="py-20 text-center flex flex-col items-center gap-4 px-6">
+            <div className="p-4 rounded-full bg-white/5 text-slate-700">
+              <Info className="h-8 w-8" />
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+              Select a prompt from the catalog or navigator to inspect its structural metadata and runtime configuration.
+            </p>
           </div>
         )}
+      </div>
+    );
+  };
 
-        {activeTab === "evaluations" && selectedPrompt && (
-          <EvaluationsLab
-            prompt={selectedPrompt}
-            onUpdateTestCases={handleUpdateTestCases}
-          />
-        )}
-
-        {activeTab === "optimize" && (
-          <AiOptimizer onLoadOptimized={handleLoadOptimized} />
-        )}
-
-        {activeTab === "analytics" && (
-          <AnalyticsPanel
-            prompts={prompts}
-            selectedPrompt={selectedPrompt}
-          />
-        )}
-
-        {activeTab === "providers" && (
-          <ModelProvidersManager />
-        )}
-
-        {activeTab === "sqlite" && (
-          <SqliteInspector
-            onRefreshPrompts={fetchPromptsFromSQLite}
-          />
-        )}
-
-      </main>
-
-      {/* bottom docked persona controller and quota feed */}
-      <footer className="glass-container border-t border-b-0 border-r-0 border-l-0 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 z-10 shadow-lg">
-        
-        {/* Interactive active user persona selection */}
-        <div className="flex items-center gap-3 font-sans" id="active-user-persona-section">
-          <div className="flex items-center gap-1.5 font-semibold text-slate-300">
-            <User className="h-4 w-4 text-indigo-400" /> Active Persona:
-          </div>
-          <div className="flex items-center gap-1.5 bg-white/5 border border-white/5 p-1 rounded-lg">
-            {["Ahmed Albanna", "Sarah Jenkins", "Alex Martinez"].map(user => (
-              <button
-                id={`user-persona-${user.toLowerCase().replace(/\s+/g, "-")}`}
-                key={user}
-                onClick={() => setActivePersona(user)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                  activePersona === user
-                    ? "bg-white/10 text-white shadow-xs font-semibold border border-white/10"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {user}
-              </button>
-            ))}
-          </div>
+  // 5. BOTTOM SLOT (Footer, Persona Switcher, Status Bar)
+  const renderBottomSlot = () => (
+    <div className="px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-6 text-[10px] font-bold tracking-wider uppercase text-slate-500">
+      {/* Interactive active user persona selection */}
+      <div className="flex items-center gap-4" id="active-user-persona-section">
+        <div className="flex items-center gap-2 text-slate-400">
+          <User className="h-3.5 w-3.5 text-indigo-500" /> Active Persona
         </div>
+        <div className="flex items-center gap-1.5 bg-slate-950/60 border border-white/5 p-1 rounded-xl">
+          {["Ahmed Albanna", "Sarah Jenkins", "Alex Martinez"].map(user => (
+            <button
+              id={`user-persona-${user.toLowerCase().replace(/\s+/g, "-")}`}
+              key={user}
+              onClick={() => setActivePersona(user)}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activePersona === user
+                  ? "bg-white/10 text-white shadow-sm border border-white/5 font-black"
+                  : "text-slate-600 hover:text-slate-400"
+              }`}
+            >
+              {user}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        {/* Database quota and workspace synchronization status */}
-        <div className="flex items-center gap-4 font-mono text-[11px]" id="db-quota-status-section">
+      {/* Database quota and workspace synchronization status */}
+      <div className="flex items-center gap-6" id="db-quota-status-section">
+        <div className="flex items-center gap-4">
           <button
             id="sqlite-footer-status-btn"
             onClick={() => setActiveTab("sqlite")}
-            className="flex items-center gap-1.5 text-emerald-400 font-bold hover:underline cursor-pointer"
+            className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 transition-colors cursor-pointer group"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <Database className="h-3.5 w-3.5 text-emerald-400" />
-            <span>SQLITE DB @ ONLINE (promptcraft.sqlite)</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <Database className="h-3.5 w-3.5" />
+            <span className="group-hover:underline">SQLITE_PERSISTENCE_UP</span>
           </button>
           
-          <div className="flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-indigo-400" />
-            <span>{prompts.length} PROMPTS STORED</span>
-          </div>
+          <div className="h-3 w-[1px] bg-white/5" />
 
-          <button
-            id="reset-prompt-db-btn"
-            onClick={handleResetCatalog}
-            className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 transition-colors cursor-pointer font-sans"
-          >
-            <RefreshCw className="h-3 w-3" /> Restore Pre-loaded Prompts
-          </button>
+          <div className="flex items-center gap-2 text-slate-400">
+            <CheckCircle2 className="h-3.5 w-3.5 text-indigo-500" />
+            <span>{prompts.length} Prompts Synchronized</span>
+          </div>
         </div>
 
-      </footer>
-
+        <button
+          id="reset-prompt-db-btn"
+          onClick={handleResetCatalog}
+          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer flex items-center gap-2 border border-white/5"
+        >
+          <RefreshCw className="h-3 w-3" /> Factory Reset
+        </button>
+      </div>
     </div>
   );
-}
 
+
+  return (
+    <LayoutShell
+      topSlot={renderTopSlot()}
+      leftSlot={renderLeftSlot()}
+      contentSlot={renderContentSlot()}
+      rightSlot={renderRightSlot()}
+      bottomSlot={renderBottomSlot()}
+      overlaySlot={activeOverlay}
+      isLeftOpen={isLeftSlotOpen}
+      onToggleLeft={() => setIsLeftSlotOpen(prev => !prev)}
+      isRightOpen={isRightSlotOpen}
+      onToggleRight={() => setIsRightSlotOpen(prev => !prev)}
+      leftTitle="Prompt Navigator"
+      rightTitle={activeTab === "editor" ? "Version Commit Tree" : "Prompt Metadata"}
+    />
+  );
+}
