@@ -283,7 +283,33 @@ export default function App() {
     syncPromptToSQLite(newPrompt);
   };
 
-  // 6. Execute the test prompt request server-side
+  // 6. Bulk Import Prompts from JSON/Clipboard
+  const handleImportPrompts = async (importedPrompts: Prompt[]) => {
+    if (!importedPrompts || !Array.isArray(importedPrompts)) return;
+
+    try {
+      const response = await fetch("/api/db/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompts: importedPrompts }),
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        // Refresh local state
+        await fetchPromptsFromSQLite();
+        alert(`Successfully imported ${data.count} prompts.`);
+        setActiveTab("catalog");
+      } else {
+        alert("Import failed: " + data.error);
+      }
+    } catch (error) {
+      console.error("Import error:", error);
+      alert("Failed to connect to backend for import.");
+    }
+  };
+
+  // 7. Execute the test prompt request server-side
   const handleRunTest = async (payload: {
     systemInstruction: string;
     template: string;
@@ -498,6 +524,7 @@ export default function App() {
               }}
               onCreateNew={handleCreateNewPrompt}
               onOptimizeTabTrigger={() => setActiveTab("optimize")}
+              onImportPrompts={handleImportPrompts}
             />
           )}
 

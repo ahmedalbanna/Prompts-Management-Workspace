@@ -12,7 +12,10 @@ import {
   Flame, 
   Sparkles,
   FileCode,
-  ArrowRight
+  ArrowRight,
+  Download,
+  Upload,
+  ClipboardPaste
 } from "lucide-react";
 
 interface PromptCatalogProps {
@@ -21,6 +24,7 @@ interface PromptCatalogProps {
   onSelectPrompt: (id: string) => void;
   onCreateNew: () => void;
   onOptimizeTabTrigger: () => void;
+  onImportPrompts: (prompts: Prompt[]) => void;
 }
 
 export default function PromptCatalog({
@@ -29,10 +33,14 @@ export default function PromptCatalog({
   onSelectPrompt,
   onCreateNew,
   onOptimizeTabTrigger,
+  onImportPrompts,
 }: PromptCatalogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Get all unique categories
   const categories = useMemo(() => {
@@ -67,6 +75,51 @@ export default function PromptCatalog({
       return matchesSearch && matchesCategory && matchesTag;
     });
   }, [prompts, searchQuery, activeCategory, selectedTag]);
+
+  const handleExportAll = () => {
+    const dataStr = JSON.stringify(prompts, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `promptcraft_export_${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const importedData = JSON.parse(content);
+        const promptsToImport = Array.isArray(importedData) ? importedData : [importedData];
+        onImportPrompts(promptsToImport);
+      } catch (error) {
+        console.error("Failed to parse import file", error);
+        alert("Failed to import: Invalid JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleImportFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const importedData = JSON.parse(text);
+      const promptsToImport = Array.isArray(importedData) ? importedData : [importedData];
+      onImportPrompts(promptsToImport);
+    } catch (error) {
+      console.error("Failed to import from clipboard", error);
+      alert("Failed to import from clipboard: Ensure you have copied valid Prompt JSON.");
+    }
+  };
 
   // Highlight variables helper
   const detectVariablesCount = (text: string) => {
@@ -186,13 +239,52 @@ export default function PromptCatalog({
             </p>
           </div>
           
-          <button
-            id="create-new-prompt-btn"
-            onClick={onCreateNew}
-            className="px-4 py-2.5 bg-indigo-500/80 hover:bg-indigo-600 text-white font-semibold text-sm rounded-xl shadow-md border border-indigo-400/20 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4" /> Create Prompt
-          </button>
+          <div className="flex items-center gap-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept=".json" 
+              onChange={handleImportFile}
+            />
+            
+            <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+              <button
+                id="export-prompts-btn"
+                onClick={handleExportAll}
+                title="Export all prompts to JSON"
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+              
+              <button
+                id="import-prompts-file-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Import prompts from JSON file"
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer"
+              >
+                <Upload className="h-4 w-4" />
+              </button>
+
+              <button
+                id="import-prompts-clipboard-btn"
+                onClick={handleImportFromClipboard}
+                title="Import prompt from clipboard"
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer"
+              >
+                <ClipboardPaste className="h-4 w-4" />
+              </button>
+            </div>
+
+            <button
+              id="create-new-prompt-btn"
+              onClick={onCreateNew}
+              className="px-4 py-2.5 bg-indigo-500/80 hover:bg-indigo-600 text-white font-semibold text-sm rounded-xl shadow-md border border-indigo-400/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Plus className="h-4 w-4" /> Create Prompt
+            </button>
+          </div>
         </div>
 
         {filteredPrompts.length === 0 ? (

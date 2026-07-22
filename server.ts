@@ -93,7 +93,35 @@ app.delete("/api/db/prompts/:id", async (req, res) => {
   }
 });
 
-// 5. Get SQLite database metadata and statistics
+// 5. Bulk Import prompts into SQLite
+app.post("/api/db/import", async (req, res) => {
+  try {
+    const { prompts } = req.body;
+    if (!prompts || !Array.isArray(prompts)) {
+      return res.status(400).json({ success: false, error: "An array of prompts is required for bulk import." });
+    }
+
+    const db = await getSQLiteDb();
+    
+    // Save each prompt
+    for (const prompt of prompts) {
+      if (prompt && prompt.id) {
+        savePromptToSQLite(db, prompt);
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `${prompts.length} prompts imported successfully.`,
+      count: prompts.length
+    });
+  } catch (error: any) {
+    console.error("SQLite import error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to import prompts to SQLite." });
+  }
+});
+
+// 6. Get SQLite database metadata and statistics
 app.get("/api/db/stats", async (req, res) => {
   try {
     const db = await getSQLiteDb();

@@ -383,7 +383,16 @@ export default function PromptEditor({
             </span>
           </p>
 
-          <div className="flex items-center justify-end pt-2">
+          <div className="flex items-center justify-end pt-2 gap-2">
+            <button
+              id="copy-prompt-json-btn"
+              onClick={() => copyToClipboard(JSON.stringify(prompt, null, 2))}
+              className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-all border border-white/10 cursor-pointer"
+              title="Copy prompt template as JSON"
+            >
+              <Code className="h-3.5 w-3.5 text-indigo-400" /> Copy JSON
+            </button>
+            
             <button
               id="save-prompt-changes-btn"
               onClick={handleSaveClick}
