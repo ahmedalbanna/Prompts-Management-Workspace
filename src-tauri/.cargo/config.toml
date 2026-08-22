@@ -1,0 +1,10 @@
+# Cross-compilation config for building Windows (.exe) from Linux.
+# Used by: cargo build --target x86_64-pc-windows-gnu
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
+# C compiler / archiver used by -sys crates (e.g. libsqlite3-sys bundled build)
+[env]
+CC_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-gcc"
+AR_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-ar"
+CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "x86_64-w64-mingw32-gcc"
